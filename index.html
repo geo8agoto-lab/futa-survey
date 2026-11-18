@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>蓋調査マップ（端末版）</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="蓋調査">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="leaflet.css">
+<script src="leaflet.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .bar { position: absolute; top: 10px; left: 50px; right: 10px; z-index: 1000; display: flex; gap: 6px; }
+  .bar input { flex: 1; min-width: 0; padding: 10px; font-size: 16px; border: 1px solid #999; border-radius: 6px; }
+  .bar button { padding: 10px 12px; font-size: 15px; border: 0; border-radius: 6px; background: #1f4e78; color: #fff; }
+  .legend { position: absolute; bottom: 20px; left: 10px; z-index: 1000; background: rgba(255,255,255,.92);
+            padding: 8px 10px; border-radius: 6px; font-size: 13px; line-height: 1.7; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid #fff; }
+  #msg { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 3000; background: #333; color: #fff;
+         padding: 8px 14px; border-radius: 6px; font-size: 14px; display: none; max-width: 90%; }
+  .pop b { font-size: 16px; }
+  .pop .shoot { display: block; width: 100%; margin-top: 8px; padding: 12px; background: #2e7d32; color: #fff;
+                border: 0; border-radius: 6px; font-size: 16px; }
+  .pop .nav { display: block; margin-top: 6px; text-align: center; font-size: 13px; }
+  table.ledger { border-collapse: collapse; margin-top: 6px; font-size: 13px; width: 100%; }
+  table.ledger th { text-align: left; color: #666; font-weight: normal; padding: 2px 8px 2px 0; white-space: nowrap; vertical-align: top; }
+  table.ledger td { padding: 2px 0; }
+  .fixed { color: #b45309; font-weight: bold; }
+
+  /* ---- 入力ウィザード ---- */
+  #warn { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; }
+  #warn.open { display: flex; }
+  .wbox { background: #fff; border-radius: 12px; padding: 20px; width: min(440px, 90vw); }
+  .wbox button { padding: 14px; font-size: 16px; border: 0; border-radius: 8px; }
+  .req { display: inline-block; font-size: 11px; color: #fff; background: #c62828; border-radius: 3px; padding: 1px 5px; vertical-align: 2px; }
+  .opt { display: inline-block; font-size: 11px; color: #555; background: #e0e0e0; border-radius: 3px; padding: 1px 5px; vertical-align: 2px; }
+  .info3 { background: #f3f6fa; border: 1px solid #d5dfeb; border-radius: 8px; padding: 8px 12px; font-size: 15px; line-height: 1.7; margin-bottom: 4px; }
+  .info3 b { display: inline-block; width: 6em; color: #555; font-weight: normal; }
+  .fld .hint { font-size: 12px; color: #666; margin-top: 3px; }
+  .fld.miss select { border-color: #c62828; background: #fff5f5; }
+  .fld .other { margin-top: 6px; display: none; }
+  .selrow { display: flex; gap: 6px; align-items: stretch; }
+  .selrow select { flex: 1; min-width: 0; }
+  .nochg { flex: 0 0 auto; width: 6.8em; padding: 0 4px; border: 1.5px solid #1e963c; color: #1e963c; background: #fff;
+           border-radius: 8px; font-size: 13px; font-weight: bold; white-space: nowrap; }
+  .nochg.on { background: #1e963c; color: #fff; }
+  .fld.hardng select { border: 2px solid #c62828; background: #fff5f5; }
+  .fld.hardng .hint { color: #c62828; font-weight: bold; }
+  .nochg:disabled { opacity: .3; }
+  details.more { margin-top: 16px; border-top: 1px solid #eee; padding-top: 8px; }
+  details.more summary { color: #1f4e78; font-size: 15px; cursor: pointer; }
+  .confirm td.ng { color: #c62828; font-weight: bold; }
+  .pop .move { display: block; width: 100%; margin-top: 6px; padding: 8px; background: #fff; color: #6a1b9a;
+               border: 1px solid #ba68c8; border-radius: 6px; font-size: 14px; }
+  .pop .reset { display: block; width: 100%; margin-top: 6px; padding: 8px; background: #fff; color: #b71c1c;
+                border: 1px solid #e57373; border-radius: 6px; font-size: 14px; }
+  .pop .attr { display: block; width: 100%; margin-top: 6px; padding: 10px; background: #fff; color: #1f4e78;
+               border: 1px solid #1f4e78; border-radius: 6px; font-size: 15px; }
+  #login { position: fixed; inset: 0; z-index: 5000; background: #eef3f8; display: none; align-items: center; justify-content: center; }
+  #login.open { display: flex; }
+  .lbox { background: #fff; padding: 24px; border-radius: 14px; width: min(360px, 88vw); box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+  #lgBtn { width: 100%; margin-top: 8px; padding: 14px; font-size: 18px; border: 0; border-radius: 8px; background: #1f4e78; color: #fff; }
+  .who { font-size: 12px; color: #555; margin-top: 4px; }
+  .who a { color: #1f4e78; margin-left: 6px; }
+  #newBanner { display: none; position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 1500;
+               background: #1565c0; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  #moveBanner { display: none; position: fixed; top: 70px; left: 12px; z-index: 2500; background: #6a1b9a; color: #fff;
+                padding: 10px 14px; border-radius: 8px; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  #moveBanner button { margin-left: 8px; padding: 6px 10px; border: 0; border-radius: 6px; }
+  body.movemode #map { cursor: crosshair; }
+  #fPos.chg .posinfo { color: #6a1b9a; font-weight: bold; }
+  #newBanner button { margin-left: 8px; padding: 6px 10px; border: 0; border-radius: 6px; }
+  body.newmode #map { cursor: crosshair; }
+  #list { position: fixed; left: 0; right: 0; bottom: 0; height: 60vh; z-index: 1800; background: #fff; display: none;
+          flex-direction: column; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 16px rgba(0,0,0,.25); }
+  #list.open { display: flex; }
+  .lhead { padding: 10px 14px; border-bottom: 1px solid #ddd; }
+  .lctl { display: flex; gap: 6px; margin-top: 8px; }
+  .lctl input { flex: 1; min-width: 0; } .lctl select { width: auto; }
+  .lclose { border: 0; background: #eee; border-radius: 6px; font-size: 20px; width: 40px; height: 36px; }
+  #litems { flex: 1; overflow-y: auto; }
+  .li { padding: 10px 14px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px; }
+  .li:active { background: #e3f2fd; }
+  .li .t1 { font-weight: bold; } .li .t2 { font-size: 13px; color: #666; }
+  .li .dist { margin-left: auto; font-size: 13px; color: #1f4e78; white-space: nowrap; }
+  /* 入力枠：縦向きは画面下 約1/3〜、横向きは画面右 約1/3（地図は常に見える） */
+  #panel { position: fixed; left: 0; right: 0; bottom: 0; height: 60vh; z-index: 2000; background: #fff; display: none;
+           flex-direction: column; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 16px rgba(0,0,0,.25); }
+  #panel.open { display: flex; }
+  .head { padding: 12px 14px 8px; border-bottom: 1px solid #ddd; }
+  .head h2 { margin: 0; font-size: 19px; }
+  .head .sub { color: #555; font-size: 13px; }
+  .steps { display: flex; gap: 4px; margin-top: 8px; }
+  .steps div { flex: 1; text-align: center; font-size: 12px; padding: 5px 0; border-radius: 4px; background: #e8e8e8; color: #777; }
+  .steps div.on { background: #1f4e78; color: #fff; font-weight: bold; }
+  .steps div.ok { background: #c8e6c9; color: #1b5e20; }
+  .body { flex: 1; overflow-y: auto; padding: 14px; }
+  .step { display: none; }
+  .step.on { display: block; }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .hint { color: #555; font-size: 14px; margin-bottom: 12px; }
+  .cam { display: block; text-align: center; padding: 18px; background: #1f4e78; color: #fff; border-radius: 10px; font-size: 19px; }
+  /* 撮影ボタン：透明な入力部品をボタンの上に重ね、指で直接押させる（iPhone・iPad・アプリ内ブラウザ対策） */
+  .cam, .gal { position: relative; overflow: hidden; }
+  .cam input, .gal input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0;
+                           font-size: 200px; cursor: pointer; z-index: 2; }
+  .gal { display: block; text-align: center; margin-top: 12px; font-size: 14px; color: #1f4e78; text-decoration: underline; }
+  .prev { height: 22vh; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; margin: 10px auto 0; display: none; background: #eee; max-width: 100%; }
+  .shots2 { display: flex; gap: 8px; margin-top: 10px; }
+  .shots2 figure { flex: 1; margin: 0; text-align: center; font-size: 12px; color: #555; }
+  .shots2 img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; background: #eee; }
+  .okbtn { display: none; width: 100%; margin-top: 12px; padding: 16px; font-size: 19px; border: 0; border-radius: 10px; background: #2e7d32; color: #fff; }
+  .skip { display: block; text-align: center; margin-top: 22px; font-size: 14px; color: #8a4b00; text-decoration: underline; }
+  label.t { display: block; font-weight: bold; margin: 14px 0 6px; }
+  select, input[type=text], input[type=number], input[type=password], textarea { width: 100%; box-sizing: border-box; padding: 11px; font-size: 16px;
+           border: 1px solid #999; border-radius: 6px; background: #fff; }
+  .sec { margin-top: 18px; padding: 10px 12px 12px; border: 1px solid #d5dfeb; border-radius: 8px; background: #f7f9fc; }
+  .sec .cap { font-weight: bold; color: #1f4e78; }
+  .sec .cap small { font-weight: normal; color: #666; }
+  .fld { margin-top: 10px; }
+  .fld .lbl { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+  .fld .orig { font-weight: normal; color: #777; font-size: 12px; }
+  .fld.chg select, .fld.chg input { background: #fff3cd; border-color: #e0a800; }
+  .fld .undo { font-size: 12px; color: #1f4e78; text-decoration: underline; margin-left: 6px; display: none; }
+  .fld.chg .undo { display: inline; }
+  .posbtn { width: 100%; padding: 11px; font-size: 15px; border: 1px solid #1f4e78; color: #1f4e78; background: #fff; border-radius: 6px; }
+  .posinfo { font-size: 13px; color: #555; margin-top: 6px; }
+  .auto { margin-top: 12px; padding: 10px; border-radius: 6px; background: #fff; border: 1px dashed #b0bec5; font-size: 14px; }
+  .auto b { color: #1f4e78; }
+  .confirm .imgs { display: flex; gap: 8px; }
+  .confirm .imgs figure { flex: 1; margin: 0; text-align: center; font-size: 12px; color: #555; }
+  .confirm .imgs img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; background: #eee; }
+  .confirm table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
+  .confirm th { text-align: left; width: 34%; color: #555; font-weight: normal; padding: 8px 4px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .confirm td { padding: 8px 4px; border-bottom: 1px solid #eee; }
+  .foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #ddd; background: #fff; }
+  .foot button { flex: 1; padding: 15px; font-size: 17px; border: 0; border-radius: 8px; }
+  #bBack { background: #eee; flex: 0 0 24%; }
+  #bTemp { background: #fff3cd; color: #8a5a00; flex: 0 0 28%; font-size: 15px; }
+  #bNext { background: #2e7d32; color: #fff; }
+  #bNext:disabled { background: #9e9e9e; }
+
+  /* ---- iPad mini などタブレット（幅700px以上） ---- */
+  @media (min-width: 700px) {
+    .bar { left: 60px; right: 16px; top: 14px; max-width: 640px; }
+    .bar input, .bar button { font-size: 17px; padding: 12px 16px; }
+    .legend { font-size: 15px; padding: 10px 14px; }
+    .dot { width: 13px; height: 13px; }
+    .leaflet-popup-content { min-width: 280px; font-size: 15px; }
+    table.ledger { font-size: 14px; }
+    #panel { height: 40vh; }                                   /* 縦向き：下 約1/3 */
+    .head { padding: 10px 20px 8px; }
+    .head h2 { font-size: 20px; display: inline; }
+    .head .sub { font-size: 14px; display: inline; margin-left: 10px; }
+    .steps div { font-size: 14px; padding: 6px 0; }
+    .body { padding: 12px 20px; }
+    .step h3 { font-size: 18px; }
+    .fld .lbl { font-size: 15px; } .fld .orig { font-size: 13px; }
+    select, input[type=text], input[type=number], input[type=password], textarea { font-size: 17px; padding: 11px; }
+    label.t { font-size: 16px; } .auto { font-size: 15px; } .posbtn { font-size: 16px; padding: 12px; }
+    #svForm { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; }
+    .confirm .imgs img { max-height: 16vh; }
+    .foot { padding: 10px 20px; }
+    .foot button { font-size: 18px; padding: 14px; }
+    #bBack { flex: 0 0 22%; } #bTemp { flex: 0 0 26%; }
+  }
+  /* 横向き：右 約1/3 */
+  @media (min-width: 700px) { #list { height: 40vh; } }
+  @media (orientation: landscape) and (min-width: 700px) {
+    #list { top: 0; right: auto; height: auto; width: 34vw; min-width: 380px; border-radius: 0; box-shadow: 4px 0 16px rgba(0,0,0,.25); }
+    #panel { top: 0; left: auto; height: auto; width: 34vw; min-width: 380px; border-radius: 0; box-shadow: -4px 0 16px rgba(0,0,0,.25); }
+    .head h2, .head .sub { display: block; margin-left: 0; }
+    #svForm { grid-template-columns: 1fr; }
+    .prev { height: 30vh; }
+    .confirm .imgs img { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="bar">
+  <input id="q" placeholder="人孔番号 または mslink" enterkeyhint="search">
+  <button onclick="search()">検索</button>
+  <button onclick="openList()">リスト</button>
+  <button id="bNew" onclick="startNew()" style="background:#1565c0">＋新規</button>
+  <button onclick="locate()">現在地</button>
+  <button onclick="load()">更新</button>
+</div>
+<div class="legend" id="legend"></div>
+<div id="msg"></div>
+<div id="login">
+  <form class="lbox" onsubmit="doLogin();return false;">
+    <div style="font-size:20px;font-weight:bold;margin-bottom:4px">マンホール蓋調査</div>
+    <div style="color:#666;font-size:14px;margin-bottom:14px">ユーザーIDとパスワードでログインしてください</div>
+    <label class="t">ユーザーID</label>
+    <input type="text" id="lgId" autocomplete="username" autocapitalize="off" autocorrect="off">
+    <label class="t">パスワード</label>
+    <input type="password" id="lgPw" autocomplete="current-password">
+    <div id="lgMsg" style="color:#c62828;font-size:14px;min-height:20px;margin-top:8px"></div>
+    <button type="submit" id="lgBtn">ログイン</button>
+  </form>
+</div>
+<div id="moveBanner">🗺 移動先の位置を地図でタップしてください　<button onclick="cancelMove()">やめる</button></div>
+<div id="newBanner">📍 新規登録：地図上のマンホールの位置をタップしてください　<button onclick="cancelNew()">やめる</button></div>
+
+<div id="list">
+  <div class="lhead">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b style="font-size:18px">人孔リスト</b><button class="lclose" onclick="closeList()">×</button>
+    </div>
+    <div class="lctl">
+      <input id="lq" placeholder="人孔番号・mslinkで絞り込み" oninput="renderList()">
+      <select id="lst" onchange="renderList()">
+        <option value="未調査">未調査</option><option value="一時保存">一時保存</option>
+        <option value="済">調査済み</option><option value="新規">新規登録</option><option value="">すべて</option>
+      </select>
+      <select id="lsort" onchange="sortChange()">
+        <option value="near">近い順</option><option value="ban">人孔番号順</option>
+      </select>
+    </div>
+    <div id="lcount" style="font-size:13px;color:#666;margin-top:4px"></div>
+  </div>
+  <div id="litems"></div>
+</div>
+
+<div id="panel">
+  <div class="head">
+    <h2 id="pBan"></h2>
+    <div class="sub" id="pSub"></div>
+    <div class="steps" id="steps">
+      <div>① 蓋アップ</div><div>② 全景</div><div>③ 調査項目</div><div>④ 確認</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- ① 蓋アップ -->
+    <div class="step" id="st0">
+      <h3>① 蓋のアップ</h3>
+      <div class="hint">蓋の<b>真上</b>から、蓋全体が画面いっぱいに入るように撮影</div>
+      <label class="cam">📷 <span>蓋アップを撮影する</span><input type="file" accept="image/*" capture="environment" onclick="saveDraft()" onchange="pick(this,'futa')"></label>
+      <label class="gal">アルバムから選ぶ<input type="file" accept="image/*" onclick="saveDraft()" onchange="pick(this,'futa')"></label>
+      <img class="prev" id="iFuta">
+      <a class="skip" href="#" onclick="skipPhotos();return false;">撮影できない（駐車車両・蓋が見当たらない など）</a>
+    </div>
+
+    <!-- ② 全景 -->
+    <div class="step" id="st1">
+      <h3>② 全景</h3>
+      <div class="hint">スマホ・iPadを<b>横向き</b>にして、周囲が分かる位置から蓋を入れて撮影</div>
+      <label class="cam">📷 <span>全景を撮影する</span><input type="file" accept="image/*" capture="environment" onclick="saveDraft()" onchange="pick(this,'fukei')"></label>
+      <label class="gal">アルバムから選ぶ<input type="file" accept="image/*" onclick="saveDraft()" onchange="pick(this,'fukei')"></label>
+      <div class="shots2">
+        <figure><img id="tFuta"><figcaption>蓋アップ</figcaption></figure>
+        <figure><img id="iFukei"><figcaption>全景</figcaption></figure>
+      </div>
+      <button type="button" class="okbtn" id="okPhotos" onclick="go(2)">OK（調査項目へ）</button>
+    </div>
+
+    <!-- ③ 調査項目 -->
+    <div class="step" id="st2">
+      <h3>③ 調査項目</h3>
+      <div class="info3" id="info3"></div>
+      <div class="fld"><div class="lbl"><span>調査者 <span class="req">必須</span></span></div>
+        <select id="pChosain" onchange="workerChange()"></select></div>
+      <div id="svForm"></div>
+      <div class="fld" id="fPos">
+        <div class="lbl"><span>位置</span><span class="orig" id="posOrig"></span></div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="posbtn" onclick="startMove()">🗺 地図をタップして移動</button>
+          <button type="button" class="posbtn" onclick="moveToGps()">📍 今いる場所へ</button>
+        </div>
+        <div class="posinfo" id="posInfo"></div>
+        <a href="#" class="undo" onclick="undoMove();return false;">元の位置に戻す</a>
+      </div>
+      <div class="auto" id="autoBox"></div>
+      <details class="more">
+        <summary>調査状況・メモ（撮影できないときなど）</summary>
+        <label class="t">調査状況</label>
+        <select id="pStatus" onchange="svChange()">
+          <option value="">未調査のまま（内業で項目・位置だけ入力）</option>
+          <option>撮影完了</option>
+          <option>要再調査（撮影あり）</option>
+          <option>確認不可（駐車車両等）</option>
+          <option>蓋が見当たらない</option>
+        </select>
+        <label class="t">調査メモ</label>
+        <textarea id="pMemo" rows="2" oninput="saveDraft()"></textarea>
+      </details>
+    </div>
+
+    <!-- ④ 確認 -->
+    <div class="step confirm" id="st3">
+      <h3>④ 内容の確認</h3>
+      <div class="imgs">
+        <figure><img id="cFuta"><figcaption>蓋アップ</figcaption></figure>
+        <figure><img id="cFukei"><figcaption>全景</figcaption></figure>
+      </div>
+      <table id="cTable"></table>
+    </div>
+  </div>
+
+  <div class="foot">
+    <button id="bBack" onclick="back()">戻る</button>
+    <button id="bTemp" onclick="tempSave()">一時保存</button>
+    <button id="bNext" onclick="next()">次へ</button>
+  </div>
+</div>
+
+<div id="warn">
+  <div class="wbox">
+    <div style="font-size:18px;font-weight:bold;color:#b45309;margin-bottom:8px">⚠ 必須項目の確認</div>
+    <div id="warnText" style="font-size:16px;line-height:1.7"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button type="button" onclick="warnClose()" style="flex:1;background:#eee">戻って入力する</button>
+      <button type="button" onclick="warnOk()" style="flex:1;background:#2e7d32;color:#fff">そのまま登録</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="device.js"></script>
+<script>
+const VERSION = '端末版 v19';
+const PHOTO_MAX = 1280;   // 写真の長辺(px)。小さいほど送信が速い
+const PHOTO_Q = 0.8;     // JPEG画質
+const COLORS = [
+  ['未調査', '#dc2828', s => s === ''],
+  ['一時保存', '#f59e0b', s => s === '一時保存'],
+  ['新規登録', '#1565c0', s => false],
+  ['撮影完了', '#1e963c', s => s === '撮影完了'],
+  ['要再調査', '#8c3cc8', s => s.indexOf('要再調査') === 0],
+  ['確認不可・所在不明', '#787878', s => s.indexOf('確認不可') === 0 || s === '蓋が見当たらない'],
+];
+const colorOf = s => (COLORS.find(c => c[2](s)) || COLORS[0])[1];
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// 項目はサーバー（マップ.gs の FIELDS / SURVEY）から受け取る
+// pts: [0 mslink, 1 人孔番号, 2 緯度, 3 経度, 4 調査状況, 5 新規, 6 元の属性{key:値}, 7-9 -, 10 -, 11 一時保存, 12 写真ID, 13 調査値{key:値}]
+let SV = [];          // 現場・内業で入れる項目
+const P_FIX = 10;
+var moveMode = false, moveLine = null, newMode = false, tmpMarker = null;
+const banOf = p => p[1] || '';
+const origOf = (p, key) => String(((p[6] || {})[key]) == null ? '' : p[6][key]);
+const svOf = (p, key) => String(((p[13] || {})[key]) == null ? '' : p[13][key]);
+
+// ---------- 地図 ----------
+const map = L.map('map', { preferCanvas: false }).setView([35.40, 136.76], 14);
+const base = {
+  'OpenStreetMap': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap contributors' }),
+  '地理院 淡色地図': L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
+    { maxZoom: 20, maxNativeZoom: 18, attribution: '地理院タイル' }),
+  '地理院 航空写真': L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
+    { maxZoom: 20, maxNativeZoom: 18, attribution: '地理院タイル' }),
+};
+base['地理院 淡色地図'].addTo(map);   // 端末版：保存できる地理院の地図を最初に
+L.control.layers(base, null, { position: 'bottomright' }).addTo(map);
+map.on('popupopen', e => {
+  const b = e.popup.getElement().querySelector('.shoot');
+  if (b) b.addEventListener('click', () => openPanel(b.getAttribute('data-ms')));
+  const mv = e.popup.getElement().querySelector('.move');
+  if (mv) mv.addEventListener('click', () => { openPanel(mv.getAttribute('data-ms'), null, { attrOnly: true }); setTimeout(startMove, 300); });
+  const r = e.popup.getElement().querySelector('.reset');
+  if (r) r.addEventListener('click', () => resetPoint(r.getAttribute('data-ms')));
+  const a = e.popup.getElement().querySelector('.attr');
+  if (a) a.addEventListener('click', () => openPanel(a.getAttribute('data-ms'), null, { attrOnly: true }));
+});
+map.on('moveend', () => {
+  const c = map.getCenter();
+  try { localStorage.setItem('futaView', JSON.stringify({ lat: c.lat, lng: c.lng, z: map.getZoom() })); } catch (e) {}
+});
+function savedView() { try { return JSON.parse(localStorage.getItem('futaView') || 'null'); } catch (e) { return null; } }
+function urlParam(cb) {
+  try { google.script.url.getLocation(loc => cb((loc && loc.parameter) || {})); } catch (e) { cb({}); }
+}
+const renderer = L.canvas({ padding: 0.5, tolerance: 6 });
+const layer = L.layerGroup().addTo(map);
+let DATA = null, markers = {};
+
+function msg(t, ms) {
+  const m = $('msg'); m.textContent = t; m.style.display = 'block';
+  clearTimeout(msg._t);
+  if (ms) msg._t = setTimeout(() => m.style.display = 'none', ms);
+}
+
+function codeName(key, code) {
+  if (code === '' || code == null) return '—';
+  const t = (DATA.codes || {})[key] || {};
+  return t[code] && t[code] !== code ? code + '：' + t[code] : code;   // コード：名称（コード表）
+}
+const curLat = p => (svOf(p, '_lat') ? Number(p[13]._lat) : p[2]);   // 移動していれば移動後の位置
+const curLon = p => (svOf(p, '_lon') ? Number(p[13]._lon) : p[3]);
+function fieldName(key) { const f = (DATA.fields || []).find(x => x.key === key); return f ? f.name : key; }
+
+function ledgerHtml(p) {
+  const rows = (DATA.popOrig || []).map(k => {
+    const sv = SV.find(f => f.key === k);
+    const s = sv ? svOf(p, k) : '';
+    return '<tr><th>' + esc(fieldName(k)) + '</th><td>' + esc(codeName(k, origOf(p, k))) +
+      (s ? '<span class="fixed">　→ 調査：' + esc(codeName(k, s)) + '</span>' : '') + '</td></tr>';
+  });
+  return '<table class="ledger">' + rows.join('') + '</table>';
+}
+
+function popupHtml(p) {
+  const hasPhoto = p[12] && (p[12].fukei || p[12].futa);
+  return '<div class="pop"><b>' + esc(banOf(p) || '（人孔番号なし）') + '</b>　<span style="color:#666">リンクキー ' + p[0] + '</span>' +
+    (p[5] === '新規' ? '　<span style="color:#1565c0;font-weight:bold">新規登録</span>' : '') + '<br>状況：' + (p[4] || '未調査') +
+    (svOf(p, '_worker') ? '（' + esc(svOf(p, '_worker')) + '）' : '') +
+    ledgerHtml(p) +
+    '<button class="shoot" type="button" data-ms="' + p[0] + '">' + (p[4] === '一時保存' ? '📝 続きを入力' : (hasPhoto ? '📷 撮影からやり直す' : '📷 撮影・入力')) + '</button>' +
+    '<button class="attr" type="button" data-ms="' + p[0] + '">📝 ' + (p[4] && p[4] !== '一時保存' ? '調査内容を修正（写真はそのまま）' : '調査項目だけ入力（内業）') + '</button>' +
+    '<button class="move" type="button" data-ms="' + p[0] + '">📍 位置を移動</button>' +
+    (p[4] ? '<button class="reset" type="button" data-ms="' + p[0] + '">↩ 未調査に戻す</button>' : '') +
+    '<a class="nav" href="https://www.google.com/maps/dir/?api=1&destination=' + curLat(p) + ',' + curLon(p) +
+    '" target="_blank">Googleマップで経路</a></div>';
+}
+
+function draw() {
+  layer.clearLayers(); markers = {};
+  const counts = {};
+  DATA.pts.forEach(p => {
+    const col = (p[5] === '新規' && p[4] !== '一時保存') ? '#1565c0' : colorOf(p[4]);
+    const m = L.circleMarker([curLat(p), curLon(p)], { renderer, radius: 6, color: '#fff', weight: 1, fillColor: col, fillOpacity: 0.95 });
+    m.on('click', () => { if (moveMode || newMode) return; m.bindPopup(popupHtml(p)).openPopup(); });   // 位置指定中は吹き出しを出さない
+    m.addTo(layer);
+    markers[p[0]] = { m, p };
+    const name = (COLORS.find(c => c[1] === col) || COLORS[0])[0];
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  $('legend').innerHTML = COLORS.map(c =>
+    '<div><span class="dot" style="background:' + c[1] + '"></span>' + c[0] + '　' + (counts[c[0]] || 0) + '</div>').join('') +
+    '<div style="font-size:11px;color:#888">撮影対応版 ' + VERSION + '</div>' +
+    '<div class="who">ログイン：' + esc(DATA.me || '') + '<a href="#" onclick="doLogout();return false;">ログアウト</a></div>';
+}
+
+// ---------- ログイン ----------
+let TOKEN = store0('futaToken');
+function store0(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+function showLogin(m) {
+  $('login').classList.add('open'); $('lgMsg').textContent = m || '';
+  try { $('lgId').value = localStorage.getItem('futaUser') || ''; } catch (e) {}
+  setTimeout(() => ($('lgId').value ? $('lgPw') : $('lgId')).focus(), 100);
+}
+function needLogin(e) { return e && String(e.message || e).indexOf('LOGIN_REQUIRED') >= 0; }
+function doLogin() {
+  const id = $('lgId').value.trim(), pw = $('lgPw').value;
+  $('lgBtn').disabled = true; $('lgBtn').textContent = 'ログイン中…';
+  google.script.run
+    .withSuccessHandler(r => {
+      TOKEN = r.token;
+      try { localStorage.setItem('futaToken', r.token); localStorage.setItem('futaUser', id);
+            if (!localStorage.getItem('chosain')) localStorage.setItem('chosain', r.name); } catch (e) {}
+      $('lgPw').value = ''; $('lgBtn').disabled = false; $('lgBtn').textContent = 'ログイン';
+      $('login').classList.remove('open');
+      load();
+    })
+    .withFailureHandler(e => {
+      $('lgBtn').disabled = false; $('lgBtn').textContent = 'ログイン';
+      $('lgMsg').textContent = e.message;
+    })
+    .login(id, pw);
+}
+function doLogout() {
+  if (!confirm('ログアウトしますか？')) return;
+  google.script.run.logout(TOKEN);
+  TOKEN = ''; try { localStorage.removeItem('futaToken'); } catch (e) {}
+  showLogin('ログアウトしました');
+}
+
+function load() {
+  if (!TOKEN) { showLogin(); return; }
+  msg('読み込み中…');
+  google.script.run
+    .withSuccessHandler(s => {
+      const first = !DATA;
+      DATA = JSON.parse(s);
+      DATA.pts.forEach(p => { p[0] = String(p[0]); if (!p[P_FIX]) p[P_FIX] = {}; });
+      DATA.pts.forEach(p => { if (!p[13]) p[13] = {}; });
+      SV = DATA.survey || [];
+      draw();
+      msg('最新の状況を表示しました', 1500);
+      if (first) {
+        const v = savedView();
+        if (v) map.setView([v.lat, v.lng], v.z, { animate: false });
+        else if (DATA.pts.length) map.fitBounds(L.latLngBounds(DATA.pts.map(p => [p[2], p[3]])));
+        urlParam(prm => {
+          if (prm.ms) jumpTo(String(prm.ms));      // スプレッドシートから開いたときはその人孔へ
+          else restoreDraft();                     // 入力途中があれば再開
+        });
+      }
+    })
+    .withFailureHandler(e => {
+      if (needLogin(e)) { TOKEN = ''; msg('', 1); showLogin('ログインの有効期限が切れました。もう一度ログインしてください'); return; }
+      msg('読み込みエラー：' + e.message);
+    })
+    .getMapData(TOKEN);
+}
+
+function search() {
+  const q = $('q').value.trim().toUpperCase();
+  if (!q || !DATA) return;
+  const ban = p => String(banOf(p)).toUpperCase();
+  const hit = DATA.pts.find(p => p[0] === q || ban(p) === q || p[1].toUpperCase() === q) ||
+              DATA.pts.find(p => ban(p).indexOf(q) >= 0);
+  if (!hit) { msg('見つかりません', 1500); return; }
+  jumpTo(hit[0]);
+}
+// 指定の人孔へ移動（縮尺は今のまま。広域表示中だけ拡大）
+function jumpTo(ms) {
+  const mk = markers[ms];
+  if (!mk) { msg('mslink ' + ms + ' が見つかりません', 2000); return; }
+  map.setView([curLat(mk.p), curLon(mk.p)], Math.max(map.getZoom(), 18));
+  mk.m.bindPopup(popupHtml(mk.p)).openPopup();
+}
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+let me = null;
+function getPos(ok) {
+  if (!navigator.geolocation) { msg('現在地を取得できません', 2000); return; }
+  msg('現在地を取得中…');
+  navigator.geolocation.getCurrentPosition(pos => { msg('', 1); ok(pos.coords); },
+    () => msg('現在地を取得できませんでした（位置情報の許可を確認）', 2500),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+function locate() {
+  getPos(c => {
+    const ll = [c.latitude, c.longitude];
+    if (me) me.setLatLng(ll); else me = L.circleMarker(ll, { renderer, interactive: false, radius: 8, color: '#fff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1 }).addTo(map);
+    map.setView(ll, 18);
+  });
+}
+
+// ---------- 入力ウィザード ----------
+let cur = null, step = 0, shots = { fukei: null, futa: null }, shotNew = { fukei: false, futa: false }, noPhoto = false, newPos = null;
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+
+// 台帳の入力欄を作る（初期値＝現在値、比較は元の台帳値）
+// ---------- 調査項目フォーム ----------
+let TODAY = (() => { const d = new Date(); return d.getFullYear() + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2); })();
+function buildSvForm() {
+  $('svForm').innerHTML = SV.map(f => {
+    const orig = codeName(f.key, origOf(cur, f.key));
+    const opts = '<option value="">（未選択）</option>' + f.opts.map(o => '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>').join('');
+    return '<div class="fld" id="F_' + f.key + '"><div class="lbl"><span>' + esc(f.name) + ' ' +
+      (f.req ? '<span class="req">必須</span>' : '<span class="opt">任意</span>') + '</span>' +
+      '<span class="orig">台帳：' + esc(orig) + '</span></div>' +
+      '<div class="selrow"><select id="S_' + f.key + '" onchange="svChange()">' + opts + '</select>' +
+      (isNewPt() || f.showIf ? '' : '<button type="button" class="nochg" id="N_' + f.key + '" onclick="noChange(\'' + f.key + '\')">変更なし</button>') + '</div>' +
+      (f.other ? '<input type="text" class="other" id="O_' + f.key + '" placeholder="その他の内容を記入" oninput="svChange()">' : '') +
+      (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
+  }).join('');
+}
+// 台帳のコード（プルダウンにあるものだけ）
+function ledgerCode(f) {
+  if (!cur || isNewPt()) return '';
+  const c = String(origOf(cur, f.key) || '').trim();
+  return f.opts.some(o => o[0] === c) ? c : '';
+}
+// 未入力の項目に台帳の値（コード：名称）を入れておく
+function prefillLedger() {
+  SV.forEach(f => { const el = $('S_' + f.key); const c = ledgerCode(f); if (el && !el.value && c) el.value = c; });
+}
+// 「変更なし」＝台帳の値のまま
+function noChange(key) {
+  const f = SV.find(x => x.key === key), el = $('S_' + key), c = ledgerCode(f);
+  if (!el || !c || el.disabled) return;
+  el.value = c;
+  if ($('O_' + key)) $('O_' + key).value = '';
+  svChange();
+}
+// 出す・出さない（口径枝番は口径 02：300 のときだけ）
+function shown(f) {
+  if (!f.showIf) return true;
+  return Object.keys(f.showIf).every(k => $('S_' + k) && $('S_' + k).value === f.showIf[k]);
+}
+// 空のままでは先へ進めない項目（口径枝番）
+function hardMissing() {
+  return SV.filter(f => f.hard && shown(f) && !($('S_' + f.key) || {}).value).map(f => f.name);
+}
+// 選択肢の連動（スリップ防止「あり」はDのみ／口径枝番は口径 02 のときだけ）
+function applyRules() {
+  const type = $('S_type') ? $('S_type').value : '';
+  SV.forEach(f => {
+    const el = $('S_' + f.key); if (!el) return;
+    if (f.showIf) {
+      const on = shown(f);
+      $('F_' + f.key).style.display = on ? '' : 'none';
+      if (!on) el.value = '';
+      $('F_' + f.key).classList.toggle('hardng', on && f.hard && !el.value);
+    }
+    if (f.naIfType) {
+      const na = !!type && f.naIfType.some(c => type.indexOf(c) === 0);
+      if (na) { el.value = ''; el.disabled = true; el.options[0].text = '該当なし'; }
+      else { el.disabled = false; el.options[0].text = '（未選択）'; }
+    }
+    if (f.onlyIfType) {
+      [...el.options].forEach(o => {
+        const need = f.onlyIfType[o.value];
+        if (!need) return;
+        const ok = !!type && need.some(c => type.indexOf(c) === 0);
+        o.disabled = !ok;
+        if (!ok && el.value === o.value) el.value = '';
+      });
+    }
+    const ot = $('O_' + f.key);
+    if (ot) ot.style.display = el.value === f.other ? 'block' : 'none';
+    const nb = $('N_' + f.key);
+    if (nb) {
+      const c = ledgerCode(f);
+      nb.disabled = !c || el.disabled;
+      const on = !!c && !el.disabled && el.value === c;
+      nb.classList.toggle('on', on);
+      nb.textContent = on ? '✓ 変更なし' : '変更なし';
+      nb.title = c ? '台帳：' + codeName(f.key, c) : '台帳にコードがありません';
+    }
+  });
+}
+// 値はコードで持つ。「その他」の記述は _other に
+function svRead() {
+  const v = { _other: {} };
+  SV.forEach(f => {
+    const el = $('S_' + f.key); if (!el) return;
+    v[f.key] = el.disabled ? '' : el.value;
+    const ot = $('O_' + f.key);
+    if (ot && v[f.key] === f.other && ot.value.trim()) v._other[f.key] = ot.value.trim();
+  });
+  return v;
+}
+// 古い形（「T-25」「その他：xx」など）の値もコードに直す
+function normC(f, x) {
+  x = String(x == null ? '' : x).trim();
+  if (x === '' || x === '該当なし') return { c: '' };
+  if (f.opts.some(o => o[0] === x)) return { c: x };
+  if (/^その他/.test(x)) return { c: f.other || x, o: x.replace(/^その他：?/, '') };
+  if (f.key === 'slip_umu' && /^有/.test(x)) return { c: '1' };
+  if (f.key === 'slip_umu' && x === '無') return { c: '0' };
+  const head = x.split('：')[0];
+  const hit = f.opts.find(o => o[0] === head || o[1] === x || o[1].split('：').slice(1).join('：') === x);
+  return { c: hit ? hit[0] : x };
+}
+function svApply(v) {
+  if (!v) return;
+  SV.forEach(f => {
+    const el = $('S_' + f.key); if (!el || v[f.key] == null) return;
+    const z = normC(f, v[f.key]);
+    if (z.c && ![...el.options].some(o => o.value === z.c)) el.add(new Option(codeName(f.key, z.c), z.c));
+    el.value = z.c;
+    const t = (v._other && v._other[f.key]) || z.o;
+    if (t && $('O_' + f.key)) $('O_' + f.key).value = t;
+  });
+}
+// 表示用：「コード：名称」＋その他の記述
+function dispSv(f, v) {
+  const el = $('S_' + f.key);
+  if (el && el.disabled && f.naIfType) return '該当なし';
+  const c = v[f.key]; if (!c) return '';
+  return codeName(f.key, c) + (v._other && v._other[f.key] ? '（' + v._other[f.key] + '）' : '');
+}
+function missingReq() {
+  if ($('pStatus').value === '') return [];           // 未調査のまま（内業で項目・位置だけ）は警告しない
+  const v = svRead(), out = [];
+  const w = $('pChosain').value;
+  if (!w || w === '__new') out.push('調査者');
+  SV.forEach(f => { const el = $('S_' + f.key); if (f.req && shown(f) && !v[f.key] && !(el && el.disabled)) out.push(f.name); });
+  if ($('pStatus').value === '撮影完了' && !(shots.fukei && shots.futa)) out.push('写真2枚（蓋アップ・全景）');
+  return out;
+}
+function bearing(lat1, lon1, lat2, lon2) {
+  const R = 6378137, toR = Math.PI / 180;
+  const dy = (lat2 - lat1) * toR * R, dx = (lon2 - lon1) * toR * R * Math.cos(lat1 * toR);
+  const d = Math.sqrt(dx * dx + dy * dy);
+  const dirs = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
+  const a = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  return { d: d, dir: dirs[Math.round(a / 45) % 8] };
+}
+function isNewPt() { return !!cur && (cur[0] === 'NEW' || cur[5] === '新規'); }
+function q(s) { return '「' + (s === '' || s == null || s === '—' ? '空欄' : s) + '」'; }
+// 台帳（元の属性）と比べて、何を何に変えたかを文章にする
+function autoText() {
+  const v = svRead();
+  if (isNewPt()) {
+    const items = SV.filter(f => v[f.key]).map(f => f.name + '：' + dispSv(f, v));
+    return { kubun: '新規登録', naiyo: items.join('／'), biko: '新規登録' + (items.length ? '（' + items.join('、') + '）' : '') };
+  }
+  // タイプ・口径は台帳のコードの意味が分からないため、変更内容には出さない（SURVEY の noDiff）
+  // 台帳が空白の項目は「新たに入れた」だけなので、変更として出さない
+  const ch = SV.filter(f => !f.noDiff && v[f.key] && String(origOf(cur, f.key) || '').trim() !== '' && v[f.key] !== origOf(cur, f.key));
+  const mv = moveText();
+  if (!ch.length && !mv) return { kubun: '修正なし', naiyo: '', biko: '変更なし' };
+  const k = ch.map(f => f.name + '修正'), n = ch.map(f => f.name + '：' + codeName(f.key, origOf(cur, f.key)) + ' → ' + dispSv(f, v)),
+        b = ch.map(f => f.name + 'を' + q(codeName(f.key, origOf(cur, f.key))) + 'から' + q(dispSv(f, v)) + 'に変更');
+  if (mv) { k.push('位置移動'); n.push(mv.naiyo); b.push(mv.biko); }
+  return { kubun: k.join('、'), naiyo: n.join('／'), biko: b.join('。') + '。' };
+}
+// ---------- 位置の移動 ----------
+moveLine = null;
+function fmtLL(lat, lon) { return Number(lat).toFixed(6) + ', ' + Number(lon).toFixed(6); }
+function moveText() {
+  if (!newPos || isNewPt()) return null;
+  const b = bearing(cur[2], cur[3], newPos.lat, newPos.lon);
+  return { naiyo: '位置：' + b.dir + 'へ約' + b.d.toFixed(1) + 'm移動（' + fmtLL(newPos.lat, newPos.lon) + '）',
+           biko: '位置移動（' + b.dir + 'へ約' + b.d.toFixed(1) + 'm、移動後 ' + fmtLL(newPos.lat, newPos.lon) + '）' };
+}
+function startMove() {
+  if (!cur) return;
+  moveMode = true; document.body.classList.add('movemode'); $('moveBanner').style.display = 'block';
+  msg('移動先の位置を地図でタップしてください', 2500);
+}
+function cancelMove() { moveMode = false; document.body.classList.remove('movemode'); $('moveBanner').style.display = 'none'; }
+function applyMove(lat, lon, how) {
+  const b = bearing(cur[2], cur[3], lat, lon);
+  const ok = confirm('この位置に移動してよいですか？\n\n' +
+    '移動前：' + fmtLL(cur[2], cur[3]) + '\n' +
+    '移動後：' + fmtLL(lat, lon) + '\n' +
+    '（' + b.dir + 'へ約' + b.d.toFixed(1) + 'm' + (how ? '・' + how : '') + '）');
+  if (!ok) return;
+  if (isNewPt()) { cur[2] = lat; cur[3] = lon; if (tmpMarker) tmpMarker.setLatLng([lat, lon]); newPos = null; }
+  else newPos = { lat: lat, lon: lon };
+  drawMove(); svChange();
+  msg('位置を移動しました（登録すると保存されます）', 2200);
+}
+function moveToGps() {
+  getPos(c => applyMove(c.latitude, c.longitude, 'GPS誤差±' + Math.round(c.accuracy || 0) + 'm'));
+}
+function undoMove() { newPos = null; drawMove(); svChange(); }
+function drawMove() {
+  if (moveLine) { map.removeLayer(moveLine); moveLine = null; }
+  const ll = newPos ? [newPos.lat, newPos.lon] : [cur[2], cur[3]];
+  if (ring) ring.setLatLng(ll);
+  if (newPos) moveLine = L.polyline([[cur[2], cur[3]], ll], { renderer, interactive: false, color: '#6a1b9a', weight: 3, dashArray: '6 6' }).addTo(map);
+  $('posOrig').textContent = '台帳：' + fmtLL(cur[2], cur[3]);
+  $('fPos').classList.toggle('chg', !!newPos);
+  const m = moveText();
+  $('posInfo').textContent = m ? '移動後：' + fmtLL(newPos.lat, newPos.lon) + '（' + m.naiyo.replace(/^位置：/, '').replace(/（.*$/, '') + '）'
+                               : (isNewPt() ? '新規の位置：' + fmtLL(cur[2], cur[3]) : '元の位置のまま');
+}
+map.on('click', e => {
+  if (!moveMode || !cur) return;
+  cancelMove();
+  applyMove(e.latlng.lat, e.latlng.lng, '地図で指定');
+});
+
+function svChange() {
+  applyRules();
+  const miss = missingReq();
+  SV.forEach(f => { const d = $('F_' + f.key); if (d) d.classList.toggle('miss', miss.indexOf(f.name) >= 0); });
+  const a = autoText();
+  $('autoBox').innerHTML = '<b>備考（変更内容・自動）</b>：' + esc(a.biko) +
+    (miss.length ? '<br><b style="color:#c62828">未入力の必須項目</b>：' + esc(miss.join('、')) : '');
+  saveDraft();
+}
+
+// 調査者プルダウン（前回の人が初期値）
+function buildWorkers(sel) {
+  const list = (DATA.workers || []).slice();
+  const last = sel || store.get('chosain') || DATA.me || '';
+  if (last && list.indexOf(last) < 0) list.push(last);
+  $('pChosain').innerHTML = '<option value="">（選択してください）</option>' +
+    list.map(n => '<option>' + esc(n) + '</option>').join('') + '<option value="__new">＋ 新しい調査者を追加</option>';
+  $('pChosain').value = last || '';
+}
+function workerChange() {
+  const s = $('pChosain');
+  if (s.value === '__new') {
+    const n = (prompt('調査者の名前を入力してください') || '').trim();
+    if (n) { DATA.workers = (DATA.workers || []).concat([n]); buildWorkers(n); store.set('chosain', n); }
+    else s.value = store.get('chosain') || '';
+  } else if (s.value) store.set('chosain', s.value);
+  svChange();
+}
+
+// opt.attrOnly … 写真は撮らずに調査項目だけ入力（内業）
+function openPanel(ms, dr, opt) {
+  opt = opt || {};
+  cur = (typeof ms === 'object') ? ms : markers[ms].p;
+  shots = { fukei: null, futa: null }; shotNew = { fukei: false, futa: false }; noPhoto = false; newPos = null;
+  $('pBan').textContent = isNewPt() ? (cur[0] === 'NEW' ? '新規登録' : '新規登録 ' + (banOf(cur) || '')) : (banOf(cur) || '（人孔番号なし）');
+  $('pSub').textContent = cur[0] === 'NEW' ? 'リンクキー（mslink）は登録時に自動で採番' : 'リンクキー ' + cur[0] + '　現在：' + (cur[4] || '未調査');
+  $('info3').innerHTML = '<b>リンクキー</b>' + (cur[0] === 'NEW' ? '登録時に自動採番' : esc(cur[0])) +
+    '<br><b>人孔番号</b>' + esc(banOf(cur) || '—') + '<br><b>調査日</b>' + TODAY + '（自動）';
+  $('pStatus').value = (cur[4] && cur[4] !== '一時保存') ? cur[4] : '撮影完了';
+  $('pMemo').value = '';
+  ['iFukei', 'iFuta'].forEach(id => { $(id).style.display = 'none'; $(id).src = ''; });
+  $('tFuta').src = ''; $('okPhotos').style.display = 'none';
+  document.querySelectorAll('#panel input[type=file]').forEach(i => i.value = '');
+  buildSvForm();
+  svApply(cur[13]);                       // すでに入っている調査値
+  buildWorkers();
+  let s = 0;
+  const server = !dr && cur[11];          // サーバーに一時保存された内容
+  if (server) { dr = cur[11]; }
+  if (dr) {
+    noPhoto = !!dr.noPhoto;
+    if (dr.status) $('pStatus').value = dr.status;
+    if (dr.memo) $('pMemo').value = dr.memo;
+    if (dr.sv) svApply(dr.sv);
+    if (dr.chosain) buildWorkers(dr.chosain);
+    if (dr.fukei) showShot('fukei', dr.fukei, dr.fukeiNew);
+    if (dr.futa) showShot('futa', dr.futa, dr.futaNew);
+    s = dr.step || 0;
+  }
+  prefillLedger();                        // 未入力の項目は台帳の値から
+  const ids = cur[12] || {};
+  if ((server || opt.attrOnly) && (ids.fukei || ids.futa)) {
+    google.script.run.withSuccessHandler(ph => {
+      if (ph.fukei) showShot('fukei', ph.fukei, false);
+      if (ph.futa) showShot('futa', ph.futa, false);
+      if (step === 3) fillConfirm();
+    }).withFailureHandler(() => {}).getPhotos(ids, TOKEN);
+    ['fukei', 'futa'].forEach(k => { if (ids[k] && !shots[k]) shots[k] = 'SAVED'; });
+  }
+  if (opt.attrOnly) {
+    s = 2;
+    if (!(ids.fukei || ids.futa)) {
+      noPhoto = true;
+      if (!cur[4] && !dr) $('pStatus').value = '';    // 未調査の人孔を内業で触るときは未調査のまま
+    }
+  }
+  map.closePopup();
+  if (ring) map.removeLayer(ring);
+  ring = L.circleMarker([cur[2], cur[3]], { renderer, interactive: false, radius: 14, color: '#1a73e8', weight: 4, fill: false }).addTo(map);
+  if (!isNewPt() && svOf(cur, '_lat') && svOf(cur, '_lon')) newPos = { lat: Number(cur[13]._lat), lon: Number(cur[13]._lon) };
+  if (dr && dr.newPos !== undefined) newPos = dr.newPos;
+  drawMove();
+  setTimeout(keepVisible, 50);
+  $('panel').classList.add('open');
+  svChange();
+  go(s);
+}
+
+let ring = null;   // 入力中の人孔の目印
+// 入力枠に隠れないよう、入力中の人孔を地図の見えている部分の中央へ
+function keepVisible() {
+  if (!cur) return;
+  const pr = $('panel').getBoundingClientRect();
+  const W = window.innerWidth, Hh = window.innerHeight;
+  const side = pr.left > 0 && pr.top <= 1;
+  const target = side ? L.point(pr.left / 2, Hh / 2) : L.point(W / 2, Math.max(80, pr.top / 2 + 30));
+  const pt = map.latLngToContainerPoint(newPos ? [newPos.lat, newPos.lon] : [cur[2], cur[3]]);
+  map.panBy(pt.subtract(target), { animate: false });
+}
+window.addEventListener('resize', () => setTimeout(keepVisible, 300));
+function closePanel() {
+  $('panel').classList.remove('open'); store.del('futaDraft'); cur = null;
+  if (ring) { map.removeLayer(ring); ring = null; }
+  if (tmpMarker) { map.removeLayer(tmpMarker); tmpMarker = null; }
+  if (moveLine) { map.removeLayer(moveLine); moveLine = null; }
+  cancelMove();
+}
+
+function go(s) {
+  step = s;
+  for (let i = 0; i < 4; i++) {
+    $('st' + i).classList.toggle('on', i === s);
+    $('steps').children[i].className = i === s ? 'on' : (i < s && !(noPhoto && i < 2) ? 'ok' : '');
+  }
+  $('bBack').textContent = s === 0 ? '中止' : '戻る';
+  $('bTemp').style.display = s === 3 ? 'none' : '';
+  const nb = $('bNext');
+  nb.disabled = false;
+  if (s === 0) { nb.textContent = '次へ（全景）'; nb.disabled = !shots.futa; }
+  if (s === 1) { nb.textContent = 'OK（調査項目へ）'; nb.disabled = !shots.fukei; $('okPhotos').style.display = shots.fukei ? 'block' : 'none'; }
+  if (s === 2) { nb.textContent = '確認へ'; }
+  if (s === 3) { nb.textContent = '登録'; fillConfirm(); }
+  document.querySelector('#panel .body').scrollTop = 0;
+  saveDraft();
+}
+
+function next() {
+  if (step === 2) {
+    const hm = hardMissing();
+    if (hm.length) { svChange(); alert(hm.join('、') + ' を選んでください（口径 02：300 のときは 300 か 360 を必ず選びます）'); return; }
+  }
+  if (step < 3) return go(step + 1);
+  // 登録：必須の未入力があれば警告（社内で後から入れる場合はそのまま登録できる）
+  const miss = missingReq();
+  if (miss.length) {
+    $('warnText').innerHTML = '<b>' + esc(miss.join('、')) + '</b> は必須ですが、入力漏れではないですか？<br>' +
+      '社内（内業）で後から入れる場合は「そのまま登録」を押してください。';
+    $('warn').classList.add('open');
+    return;
+  }
+  send();
+}
+function warnClose() { $('warn').classList.remove('open'); go(2); }
+function warnOk() { $('warn').classList.remove('open'); send(); }
+
+function back() {
+  if (step === 0) { if (confirm('入力を中止して地図に戻りますか？')) closePanel(); return; }
+  if (step === 2 && noPhoto) { if (confirm('入力を中止して地図に戻りますか？')) closePanel(); return; }
+  go(step - 1);
+}
+
+function skipPhotos() {
+  noPhoto = true;
+  if ($('pStatus').value === '撮影完了') $('pStatus').value = '確認不可（駐車車両等）';
+  document.querySelector('details.more').open = true;
+  go(2);
+}
+
+// 横長(4:3)・長辺 PHOTO_MAX px のJPEG。縦長の写真は中央を横長に切り出す
+function toLandscape(file) {
+  return new Promise((ok, ng) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth, h = img.naturalHeight;
+      let sy = 0, sw = w, sh = h;
+      if (h > w) { sh = Math.round(w * 3 / 4); sy = Math.round((h - sh) / 2); }
+      const s = Math.min(1, PHOTO_MAX / sw);
+      const c = document.createElement('canvas');
+      c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+      c.getContext('2d').drawImage(img, 0, sy, sw, sh, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok({ data: c.toDataURL('image/jpeg', PHOTO_Q), cropped: h > w });
+    };
+    img.onerror = ng;
+    img.src = url;
+  });
+}
+function showShot(key, b64, isNew) {
+  shots[key] = b64;
+  shotNew[key] = !!isNew;
+  const img = $(key === 'fukei' ? 'iFukei' : 'iFuta');
+  if (b64 && b64 !== 'SAVED') {
+    img.src = 'data:image/jpeg;base64,' + b64; img.style.display = 'block';
+    if (key === 'futa') $('tFuta').src = img.src;
+  }
+}
+async function pick(input, key) {
+  if (!input.files || !input.files[0]) return;
+  msg('写真を準備中…');
+  try {
+    const r = await toLandscape(input.files[0]);
+    showShot(key, r.data.split(',')[1], true);
+    noPhoto = false;
+    input.value = '';
+    msg((key === 'fukei' ? '全景OK → 確認して「OK」' : '蓋アップOK → 次は全景') + (r.cropped ? '（縦向きだったので横長に切り出しました）' : ''), 1800);
+    setTimeout(() => go(1), 600);
+  } catch (e) { msg('写真を読み込めませんでした', 2000); }
+}
+
+function fillConfirm() {
+  $('cFukei').src = shots.fukei && shots.fukei !== 'SAVED' ? 'data:image/jpeg;base64,' + shots.fukei : '';
+  $('cFuta').src = shots.futa && shots.futa !== 'SAVED' ? 'data:image/jpeg;base64,' + shots.futa : '';
+  const a = autoText(), v = svRead();
+  const rows = [['リンクキー', cur[0] === 'NEW' ? '登録時に自動採番' : cur[0]], ['人孔番号', banOf(cur) || '—'],
+    ['調査日', TODAY], ['調査者', $('pChosain').value === '__new' ? '' : $('pChosain').value]]
+    .concat(SV.filter(f => shown(f)).map(f => [f.name, dispSv(f, v), f.req]))
+    .concat([['位置', newPos ? '移動後 ' + fmtLL(newPos.lat, newPos.lon) : (isNewPt() ? fmtLL(cur[2], cur[3]) : '元の位置のまま')],
+             ['調査状況', $('pStatus').value], ['備考（変更内容）', a.biko]]);
+  $('cTable').innerHTML = rows.map(r => {
+    const empty = !r[1];
+    const ng = empty && (r[2] || r[0] === '調査者');
+    return '<tr><th>' + esc(r[0]) + '</th><td' + (ng ? ' class="ng"' : '') + '>' + (empty ? (ng ? '未入力（必須）' : '—') : esc(r[1])) + '</td></tr>';
+  }).join('');
+}
+
+function send() {
+  const btn = $('bNext');
+  btn.disabled = true; btn.textContent = '登録中…';
+  const a = autoText();
+  const pos = { lat: cur[2], lon: cur[3] };
+  const d = {
+    pos: (!isNewPt() && newPos) ? newPos : null,
+    mslink: cur[0] === 'NEW' ? '' : cur[0], isNew: cur[0] === 'NEW', newLat: pos.lat, newLon: pos.lon,
+    status: $('pStatus').value, biko: a.biko, memo: $('pMemo').value.trim(), chosain: $('pChosain').value === '__new' ? '' : $('pChosain').value,
+    fukei: shotNew.fukei ? shots.fukei : null, futa: shotNew.futa ? shots.futa : null,
+    sv: svRead(), shusei: a.kubun, shuseiNaiyo: a.naiyo, missing: missingReq().join('、'),
+  };
+  google.script.run
+    .withSuccessHandler(r => {
+      const p = cur;
+      adoptNew(p, r);
+      p[4] = r.status; p[11] = null; p[12] = r.ids || {}; p[13] = r.sv || p[13];
+      if (d.chosain && DATA.workers.indexOf(d.chosain) < 0) DATA.workers.push(d.chosain);
+      if (!d.status) p[4] = '';
+      draw();
+      closePanel();
+      msg('登録しました：' + (banOf(p) || 'リンクキー ' + p[0]), 2500);
+    })
+    .withFailureHandler(e => {
+      btn.disabled = false; btn.textContent = '再登録';
+      if (needLogin(e)) { saveDraft(); showLogin('ログインの期限が切れました。ログイン後に「再登録」を押してください'); return; }
+      msg('登録できませんでした（電波を確認して再登録）：' + e.message, 4000);
+    })
+    .saveSurvey(Object.assign(d, { token: TOKEN }));
+}
+
+// ---- 一時保存（サーバーに保存。あとで続きから入力できる）----
+function draftObj() {
+  return { step: step, noPhoto: noPhoto, status: $('pStatus').value, memo: $('pMemo').value, sv: svRead(), newPos: newPos,
+    chosain: $('pChosain').value === '__new' ? '' : $('pChosain').value };
+}
+function tempSave() {
+  const btn = $('bTemp');
+  btn.disabled = true; btn.textContent = '保存中…';
+  const dr = draftObj();
+  google.script.run
+    .withSuccessHandler(r => {
+      const p = cur;
+      adoptNew(p, r);
+      p[4] = '一時保存'; p[11] = r.draft; p[12] = r.ids || {};
+      btn.disabled = false; btn.textContent = '一時保存';
+      draw();
+      closePanel();
+      msg('一時保存しました（オレンジの点から続きを入力できます）', 2500);
+    })
+    .withFailureHandler(e => {
+      btn.disabled = false; btn.textContent = '一時保存';
+      if (needLogin(e)) { saveDraft(); showLogin('ログインの期限が切れました。ログイン後にもう一度「一時保存」を押してください'); return; }
+      msg('一時保存できませんでした：' + e.message, 3500);
+    })
+    .saveSurvey({ token: TOKEN, temp: true, mslink: cur[0] === 'NEW' ? '' : cur[0], isNew: cur[0] === 'NEW',
+                  newLat: cur[2], newLon: cur[3], chosain: dr.chosain, draft: dr,
+                  fukei: shotNew.fukei ? shots.fukei : null, futa: shotNew.futa ? shots.futa : null });
+}
+
+// ---- 入力途中の保存・復元（カメラ起動中にページが再読み込みされても戻れる）----
+function saveDraft() {
+  if (!cur || !$('S_type')) return;
+  const d = Object.assign(draftObj(), { ms: cur[0], isNew: cur[0] === 'NEW', lat: cur[2], lon: cur[3],
+    fukei: shots.fukei, futa: shots.futa, fukeiNew: shotNew.fukei, futaNew: shotNew.futa });
+  try { localStorage.setItem('futaDraft', JSON.stringify(d)); }
+  catch (e) { try { d.fukei = null; d.futa = null; localStorage.setItem('futaDraft', JSON.stringify(d)); } catch (e2) {} }
+}
+function restoreDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem('futaDraft') || 'null'); } catch (e) {}
+  if (d && d.isNew) {
+    openPanel(newPoint(d.lat, d.lon), d);
+    msg('新規登録の入力途中に戻りました', 2000);
+    return true;
+  }
+  if (d && markers[d.ms]) {
+    openPanel(d.ms, d);
+    msg('入力途中の画面に戻りました', 2000);
+    return true;
+  }
+  return false;
+}
+
+// ---------- 未調査に戻す ----------
+function resetPoint(ms) {
+  const p = markers[ms] && markers[ms].p; if (!p) return;
+  if (!confirm('リンクキー ' + ms + '（' + (banOf(p) || '人孔番号なし') + '）を未調査に戻しますか？\n\n' +
+               '・調査で入れた項目・調査者・調査日・備考を消します\n' +
+               '・写真はドライブのゴミ箱へ移します（30日以内なら元に戻せます）\n' +
+               '・元の台帳の属性はそのままです')) return;
+  map.closePopup();
+  msg('未調査に戻しています…');
+  google.script.run
+    .withSuccessHandler(r => {
+      p[4] = ''; p[11] = null; p[12] = {}; p[13] = {};
+      draw(); msg('未調査に戻しました', 2000);
+    })
+    .withFailureHandler(e => {
+      if (needLogin(e)) { showLogin('ログインの期限が切れました。もう一度ログインしてください'); return; }
+      msg('戻せませんでした：' + e.message, 3500);
+    })
+    .resetSurvey(ms, TOKEN);
+}
+
+// ---------- 新規登録 ----------
+tmpMarker = null;
+function startNew() {
+  if (cur) { msg('入力中の人孔を先に完了・一時保存してください', 2500); return; }
+  newMode = true; document.body.classList.add('newmode'); $('newBanner').style.display = 'block';
+  closeList(); map.closePopup();
+}
+function cancelNew() { newMode = false; document.body.classList.remove('newmode'); $('newBanner').style.display = 'none'; }
+function newPoint(lat, lon) {
+  // 送信するまでは仮の点（mslink は送信時にサーバーが採番）
+  const v = {}; (DATA.fields || []).forEach(f => { if (f.key !== 'ban') v[f.key] = ''; });
+  const p = ['NEW', '', lat, lon, '', '新規', v, '', '', '', {}, null, {}];
+  if (tmpMarker) map.removeLayer(tmpMarker);
+  tmpMarker = L.circleMarker([lat, lon], { renderer, interactive: false, radius: 9, color: '#fff', weight: 2, fillColor: '#1565c0', fillOpacity: 1 }).addTo(map);
+  return p;
+}
+map.on('click', e => {
+  if (!newMode) return;
+  cancelNew();
+  openPanel(newPoint(e.latlng.lat, e.latlng.lng));
+  msg('新規登録：① 蓋アップから撮影してください', 2500);
+});
+// 送信後、仮の点を正式な点（採番された mslink）にする
+function adoptNew(p, r) {
+  if (p[0] !== 'NEW' || !r.mslink) return;
+  p[0] = String(r.mslink); p[5] = '新規';
+  if (newPos) { p[2] = newPos.lat; p[3] = newPos.lon; }
+  if (DATA.pts.indexOf(p) < 0) DATA.pts.push(p);
+}
+
+// ---------- リスト（リストから選んで地図の場所へ） ----------
+let myPos = null;
+function openList() {
+  if (cur) { msg('入力中は使えません', 1500); return; }
+  $('list').classList.add('open'); map.closePopup();
+  if ($('lsort').value === 'near' && !myPos) sortChange(); else renderList();
+}
+function closeList() { $('list').classList.remove('open'); }
+function sortChange() {
+  if ($('lsort').value === 'near') {
+    getPos(c => { myPos = { lat: c.latitude, lon: c.longitude }; renderList(); });
+    if (!myPos) renderList();
+  } else renderList();
+}
+function distM(p) {
+  if (!myPos) return null;
+  return bearing(myPos.lat, myPos.lon, curLat(p), curLon(p)).d;
+}
+function renderList() {
+  if (!DATA) return;
+  const qv = $('lq').value.trim().toUpperCase(), st = $('lst').value;
+  let arr = DATA.pts.filter(p => {
+    if (st === '未調査' && p[4] !== '') return false;
+    if (st === '一時保存' && p[4] !== '一時保存') return false;
+    if (st === '済' && (p[4] === '' || p[4] === '一時保存')) return false;
+    if (st === '新規' && p[5] !== '新規') return false;
+    if (qv) { const b = String(banOf(p)).toUpperCase(); if (b.indexOf(qv) < 0 && p[0].indexOf(qv) < 0) return false; }
+    return true;
+  });
+  const near = $('lsort').value === 'near' && myPos;
+  if (near) arr.sort((a, b) => distM(a) - distM(b));
+  else arr.sort((a, b) => String(banOf(a)).localeCompare(String(banOf(b))));
+  $('lcount').textContent = arr.length + '件' + (arr.length > 300 ? '（先頭300件を表示）' : '') +
+    ($('lsort').value === 'near' && !myPos ? '　※現在地を取得できないため人孔番号順' : '');
+  $('litems').innerHTML = arr.slice(0, 300).map(p => {
+    const d = distM(p);
+    const col = (p[5] === '新規' && p[4] !== '一時保存') ? '#1565c0' : colorOf(p[4]);
+    const ty = svOf(p, 'type') || origOf(p, 'type');
+    return '<div class="li" data-ms="' + p[0] + '"><span class="dot" style="background:' + col + '"></span>' +
+      '<div><div class="t1">' + esc(banOf(p) || '（人孔番号なし）') + '</div>' +
+      '<div class="t2">リンクキー ' + p[0] + '　' + (p[4] || '未調査') + (ty ? '　' + esc(ty) : '') + '</div></div>' +
+      (d != null ? '<div class="dist">' + (d < 1000 ? Math.round(d) + 'm' : (d / 1000).toFixed(1) + 'km') + '</div>' : '') + '</div>';
+  }).join('');
+}
+$('litems').addEventListener('click', e => {
+  const el = e.target.closest('.li'); if (!el) return;
+  closeList(); jumpTo(el.getAttribute('data-ms'));
+});
+
+load();
+</script>
+</body>
+</html>
