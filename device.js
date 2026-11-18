@@ -45,23 +45,102 @@
   }
 
   // ---------- Google（スプレッドシート側のウェブアプリ）への通信 ----------
-  async function api(fn, args) {
-    if (!window.API_URL || API_URL.indexOf('https://script.google.com/') !== 0) throw new Error('config.js に Google のウェブアプリのURLが入っていません');
+  // ふつうは POST で送って返事を読む。ブラウザの制限で返事が読めないときは、
+  // 「POST で送るだけ ＋ 結果は GET（JSONP）で受け取る」方式に自動で切り替える
+  function checkUrl() {
+    if (!window.API_URL || API_URL.indexOf('https://script.google.com/') !== 0 || /…|\.\.\./.test(API_URL))
+      throw new Error('config.js に Google のウェブアプリのURLが正しく入っていません');
+  }
+  function netErr(e) { const x = new Error('通信できません（電波を確認してください）'); x.net = true; x.detail = e && (e.name + ': ' + e.message); return x; }
+  async function apiCors(fn, args) {
     const ac = window.AbortController ? new AbortController() : null;
     const tm = setTimeout(() => ac && ac.abort(), 120000);
+    let txt;
     try {
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ fn: fn, args: args || [] }), redirect: 'follow', signal: ac ? ac.signal : undefined });
-      const txt = await res.text();
-      let j;
-      try { j = JSON.parse(txt); } catch (e) { throw new Error('Googleから正しい返事がありません（ウェブアプリのURL・デプロイの「アクセス：全員」を確認）'); }
-      if (!j.ok) throw new Error(j.error);
-      return j.r;
+      txt = await res.text();
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('通信がタイムアウトしました（電波の良い所でもう一度）');
-      if (e instanceof TypeError) throw new Error('通信できません（電波を確認してください）');
-      throw e;
+      throw netErr(e);
     } finally { clearTimeout(tm); }
+    let j;
+    try { j = JSON.parse(txt); } catch (e) { const x = new Error('Googleから正しい返事がありません（ドライブ版が v19.1 で「新バージョン」デプロイされているか確認）'); x.net = true; x.detail = String(txt).slice(0, 120); throw x; }
+    if (!j.ok) throw new Error(j.error);
+    return j.r;
+  }
+  let jn = 0;
+  function jsonp(params, ms) {
+    return new Promise((ok, ng) => {
+      const cb = '__futaCb' + Date.now() + '_' + (++jn);
+      const sc = document.createElement('script');
+      const tm = setTimeout(() => { done(); ng(netErr({ name: 'Timeout', message: 'JSONP' })); }, ms || 120000);
+      function done() { clearTimeout(tm); try { delete window[cb]; } catch (e) { window[cb] = undefined; } sc.remove(); }
+      window[cb] = v => { done(); ok(v); };
+      sc.onerror = () => { done(); ng(netErr({ name: 'ScriptError', message: 'JSONP' })); };
+      const q = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+      sc.src = API_URL + '?' + q + '&callback=' + cb + '&_=' + Date.now();
+      document.head.appendChild(sc);
+    });
+  }
+  const GET_FNS = { getMapData: 1, getPhotos: 1, ping: 1 };
+  async function apiAlt(fn, args) {
+    let j;
+    if (GET_FNS[fn]) {
+      j = await jsonp({ api: 'call', fn: fn, args: JSON.stringify(args || []) });
+    } else {
+      const rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      try {
+        await fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ fn: fn, args: args || [], rid: rid }) });
+      } catch (e) { throw netErr(e); }
+      const t0 = Date.now();
+      for (;;) {
+        const r = await jsonp({ api: 'result', rid: rid }, 30000);
+        if (r && r.ready) { j = r.out; break; }
+        if (Date.now() - t0 > 120000) throw new Error('Googleから結果が返ってきません（もう一度押してください）');
+        await new Promise(w => setTimeout(w, 1500));
+      }
+    }
+    if (!j || !j.ok) throw new Error((j && j.error) || '不明なエラー');
+    return j.r;
+  }
+  function mode() { try { return localStorage.getItem('futaApiMode') || ''; } catch (e) { return ''; } }
+  function setMode(m) { try { localStorage.setItem('futaApiMode', m); } catch (e) {} }
+  async function api(fn, args) {
+    checkUrl();
+    if (mode() !== 'alt') {
+      try { return await apiCors(fn, args); }
+      catch (e) { if (!e.net) throw e; S.lastErr = e.detail || e.message; }
+    }
+    const r = await apiAlt(fn, args);      // 切り替え方式で成功したら、次からはこちらを使う
+    setMode('alt');
+    return r;
+  }
+
+  // ---------- 接続テスト（結果を画面に出す） ----------
+  async function diagnose() {
+    const L = [];
+    const add = t => { L.push(t); show(); };
+    const show = () => { $('dvDiagT').textContent = L.join('\n'); };
+    $('dvDiag').style.display = 'flex';
+    L.length = 0;
+    try { checkUrl(); add('URL：' + API_URL.slice(0, 48) + '…' + API_URL.slice(-12)); } catch (e) { add('× ' + e.message); return; }
+    add('電波：' + (navigator.onLine === false ? '圏外' : 'あり') + '　方式：' + (mode() || 'ふつう'));
+    try { const r = await jsonp({ api: 'ping' }, 20000); add('○ GET（JSONP）：' + JSON.stringify(r)); }
+    catch (e) { add('× GET（JSONP）：' + (e.detail || e.message)); }
+    try { const r = await apiCors('ping', []); add('○ POST（ふつう）：' + r); }
+    catch (e) { add('× POST（ふつう）：' + (e.detail || e.message)); }
+    try { const r = await apiAlt('ping', []); add('○ GET の呼び出し：' + r); }
+    catch (e) { add('× GET の呼び出し：' + (e.detail || e.message)); }
+    try {
+      const rid = 't' + Date.now();
+      await fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'ping', args: [], rid: rid }) });
+      await new Promise(w => setTimeout(w, 800));
+      const r = await jsonp({ api: 'result', rid: rid }, 20000);
+      add((r && r.ready ? '○' : '×') + ' POST（送るだけ）＋結果：' + JSON.stringify(r).slice(0, 80));
+    } catch (e) { add('× POST（送るだけ）：' + (e.detail || e.message)); }
+    add('（この画面を写真に撮って送ってください）');
   }
 
   const ptOf = ms => (S.data && S.data.pts || []).find(p => String(p[0]) === String(ms));
@@ -288,10 +367,27 @@
     box.id = 'dvBox';
     box.innerHTML = '<div><b style="color:#e65100">端末版</b>　<span id="dvNet"></span><span id="dvCount"></span></div>' +
       '<button id="dvSync" type="button">⇅ ドライブに更新</button>' +
-      '<button id="dvTiles" type="button">🗺 この範囲の地図を保存</button>';
+      '<button id="dvTiles" type="button">🗺 この範囲の地図を保存</button>' +
+      '<a href="#" id="dvTest" style="display:block;margin-top:6px;font-size:12px;color:#1f4e78">接続テスト</a>';
     document.body.appendChild(box);
+    const dg = document.createElement('div');
+    dg.id = 'dvDiag';
+    dg.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center';
+    dg.innerHTML = '<div style="background:#fff;border-radius:12px;padding:16px;width:min(560px,92vw)"><b style="font-size:17px">接続テスト</b>' +
+      '<pre id="dvDiagT" style="white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:60vh;overflow:auto;margin:10px 0"></pre>' +
+      '<button type="button" onclick="document.getElementById(\'dvDiag\').style.display=\'none\'" style="width:100%;padding:12px;font-size:16px;border:0;border-radius:8px;background:#1f4e78;color:#fff">閉じる</button></div>';
+    document.body.appendChild(dg);
+    const lb = document.querySelector('#login .lbox');
+    if (lb) {
+      const t = document.createElement('a');
+      t.href = '#'; t.textContent = '接続テスト（つながらないとき）';
+      t.style.cssText = 'display:block;text-align:center;margin-top:12px;font-size:14px;color:#1f4e78';
+      t.onclick = ev => { ev.preventDefault(); diagnose(); };
+      lb.appendChild(t);
+    }
     document.getElementById('dvSync').onclick = sync;
     document.getElementById('dvTiles').onclick = saveTiles;
+    document.getElementById('dvTest').onclick = ev => { ev.preventDefault(); diagnose(); };
     window.addEventListener('online', badge); window.addEventListener('offline', badge);
     S.ready.then(badge);
   }
@@ -301,5 +397,5 @@
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
   }
-  window.futaDevice = { sync: sync, saveTiles: saveTiles, S: S };
+  window.futaDevice = { sync: sync, saveTiles: saveTiles, diagnose: diagnose, api: api, S: S };
 })();

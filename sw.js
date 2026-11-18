@@ -1,5 +1,5 @@
 // 蓋調査マップ 端末版：電波がなくてもページと保存した地図を開けるようにする
-const VER = 'futa-app-v19';
+const VER = 'futa-app-v19.1';
 const TILES = 'futa-tiles';
 const ASSETS = ['./', './index.html', './device.js', './config.js', './leaflet.js', './leaflet.css', './manifest.json',
   './icon-192.png', './icon-512.png', './images/layers.png', './images/layers-2x.png',
@@ -25,7 +25,8 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (u.origin === self.location.origin) {                // ページ本体：電波があれば最新、なければ保存分
-    const net = new Promise((ok, ng) => { setTimeout(() => ng(new Error('timeout')), 4000); fetch(req).then(ok, ng); });   // 電波が弱いときは4秒で保存分に切替
+    const net = new Promise((ok, ng) => { setTimeout(() => ng(new Error('timeout')), 4000);
+      (req.mode === 'navigate' ? fetch(req) : fetch(req.url, { cache: 'no-cache' })).then(ok, ng); });   // config.js などは毎回最新を確認   // 電波が弱いときは4秒で保存分に切替
     e.respondWith(net.then(res => {
       if (res.ok) { const cp = res.clone(); caches.open(VER).then(c => c.put(req, cp)); }
       return res;
